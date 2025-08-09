@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>最簡易會員登入示例（GitHub + Netlify）</title>
+<!-- Netlify Identity Widget（處理註冊／登入 UI） -->
+<script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+<style>
+  :root{ --bg:#0f172a; --panel:#111827; --text:#e5e7eb; --accent:#22c55e; --muted:#9ca3af; }
+  html,body{height:100%;}
+  body{
+    margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Helvetica,sans-serif;
+    background: radial-gradient(1200px 600px at 20% 10%, #1f2937 0%, #0f172a 55%, #0b1220 100%);
+    color:var(--text); display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .card{
+    width:min(720px,100%); background:linear-gradient(180deg,#111827, #0b1020);
+    border:1px solid #253047; border-radius:16px; padding:24px; box-shadow:0 10px 30px rgba(0,0,0,.35)
+  }
+  h1{margin:0 0 8px; font-size:22px}
+  p{margin:0 0 16px; color:var(--muted)}
+  .row{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px}
+  button{
+    border:1px solid #2a3b5f; background:#0f1a2c; color:var(--text);
+    padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600;
+  }
+  button.primary{ background:#12331f; border-color:#1b4d2e; color:#d1fae5 }
+  button:disabled{ opacity:.6; cursor:not-allowed }
+  pre{
+    background:#0a1220; border:1px solid #253047; padding:12px; border-radius:10px;
+    overflow:auto; max-height:240px; color:#d1d5db; font-size:13px;
+  }
+  .muted{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>最簡易會員登入示例</h1>
+  <p>使用 Netlify Identity（前端）＋ Netlify Functions（後端）示範。先在 Netlify 啟用 Identity，然後即可註冊／登入，並呼叫受保護 API。</p>
+
+  <div class="row">
+    <button id="btn-open" class="primary">開啟登入/註冊視窗</button>
+    <button id="btn-logout">登出</button>
+    <button id="btn-whoami">取得使用者資料</button>
+    <button id="btn-call" class="primary">呼叫受保護 API（hello）</button>
+  </div>
+
+  <div style="margin-bottom:10px">
+    <strong>當前狀態：</strong>
+    <span id="status" class="muted">未登入</span>
+  </div>
+
+  <div style="margin-bottom:6px"><strong>使用者資訊</strong></div>
+  <pre id="user-box" class="muted">（登入後會顯示）</pre>
+
+  <div style="margin-bottom:6px"><strong>API 回應</strong>（/.netlify/functions/hello）</div>
+  <pre id="api-box" class="muted">（按「呼叫受保護 API」後顯示）</pre>
+</div>
+
+<script>
+  // 初始化 Netlify Identity
+  netlifyIdentity.on('init', user => {
+    updateUI(user);
+  });
+  netlifyIdentity.on('login', user => {
+    updateUI(user);
+    netlifyIdentity.close(); // 登入後關閉小窗
+  });
+  netlifyIdentity.on('logout', () => {
+    updateUI(null);
+  });
+  netlifyIdentity.on('error', err => {
+    console.error('Identity error:', err);
+    alert('Identity 發生錯誤，請查看主控台。');
+  });
+  netlifyIdentity.init();
+
+  const $ = sel => document.querySelector(sel);
+  const statusEl = $('#status');
+  const userBox = $('#user-box');
+  const apiBox = $('#api-box');
+
+  function updateUI(user){
+    if(user){
+      statusEl.textContent = '已登入：' + (user.user_metadata?.full_name || user.email);
+      userBox.textContent = JSON.stringify({
+        id: user.id,
+        email: user.email,
+        user_metadata: user.user_metadata
+      }, null, 2);
+    }else{
+      statusEl.textContent = '未登入';
+      userBox.textContent = '（登入後會顯示）';
+    }
+    apiBox.textContent = '（按「呼叫受保護 API」後顯示）';
+  }
+
+  // 開啟登入/註冊小窗
+  $('#btn-open').addEventListener('click', () => netlifyIdentity.open());
+
+  // 登出
+  $('#btn-logout').addEventListener('click', async () => {
+    if(netlifyIdentity.currentUser()) await netlifyIdentity.logout();
+  });
+
+  // 取得目前使用者（示範）
+  $('#btn-whoami').addEventListener('click', () => {
+    const user = netlifyIdentity.currentUser();
+    apiBox.textContent = JSON.stringify(user ? {
+      id: user.id, email: user.email, user_metadata: user.user_metadata
+    } : { message: '未登入' }, null, 2);
+  });
+
+  // 呼叫受保護 API（需要 Bearer Token）
+  $('#btn-call').addEventListener('click', async () => {
+    apiBox.textContent = '呼叫中…';
+    const user = netlifyIdentity.currentUser();
+    if(!user){
+      apiBox.textContent = '請先登入';
+      return;
+    }
+    try{
+      const token = await user.jwt(); // 取得 Identity JWT
+      const res = await fetch('/.netlify/functions/hello', {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      apiBox.textContent = JSON.stringify(data, null, 2);
+    }catch(err){
+      console.error(err);
+      apiBox.textContent = '呼叫失敗：' + err.message;
+    }
+  });
+</script>
+</body>
+</html>
